@@ -254,7 +254,7 @@ Notes for anyone reading the code next to the older documents:
   deletes, and the lead's sales are deleted with it.
 - **"Needs reassignment" list:** expired leads go straight back to the pool, so this list in the Team Leader
   dashboard stays empty.
-- **Base path:** the code serves `/api`; the API reference and the front end default use `/api/v1`. Set
+- **Base path:** the code serves `/api`; the API reference and the front end default use `/api`. Set
   `VITE_API_URL` accordingly.
 - **Seed script:** `scripts/seed.js` calls functions that were renamed and needs a small fix.
 

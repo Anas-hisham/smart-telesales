@@ -1,11 +1,11 @@
 /**
  * The ONLY place that talks HTTP to the back end (smart-telesales-api).
- *  - base URL comes from VITE_API_URL (default http://localhost:3000/api/v1)
+ *  - base URL comes from VITE_API_URL (default http://localhost:3000/api)
  *  - sends "Authorization: Bearer <accessToken>"
  *  - when the access token is expired (401 TOKEN_EXPIRED) it asks /auth/refresh ONCE, then repeats the request
  *  - every error leaves as an ApiError { status, code, message, details }
  */
-const BASE = ((import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000/api/v1').replace(/\/+$/, '');
+const BASE = ((import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000/api').replace(/\/+$/, '');
 const TOKENS_KEY = 'salesflow-auth-v1';
 
 interface Tokens { accessToken: string; refreshToken: string }

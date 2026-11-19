@@ -1,4 +1,4 @@
-// Every module exposes an Express router with its full paths; they are all mounted on /api/v1.
+// Every module exposes an Express router with its full paths; they are all mounted on /api.
 const router = require('express').Router();
 const { authenticate } = require('../middleware/auth');
 

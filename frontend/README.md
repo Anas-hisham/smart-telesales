@@ -88,9 +88,9 @@ npm run dev
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `VITE_API_URL` | `http://localhost:3000/api/v1` | Base URL of the REST API (trailing slashes are removed) |
+| `VITE_API_URL` | `http://localhost:3000/api` | Base URL of the REST API (trailing slashes are removed) |
 
-> **Important:** the back end in this project mounts its routes on **`/api`** (not `/api/v1`). Create a `.env` file
+> **Important:** the back end in this project mounts its routes on **`/api`** Create a `.env` file
 > next to `package.json` and set:
 >
 > ```env

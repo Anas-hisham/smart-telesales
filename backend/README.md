@@ -86,7 +86,7 @@ curl http://localhost:3000/health
 
 All API routes live under **`/api`**, for example `POST http://localhost:3000/api/auth/login`.
 
-> The front end defaults to `/api/v1`. Set its `VITE_API_URL` to `http://localhost:3000/api`, or every request will
+> The front end defaults to `/api`. Set its `VITE_API_URL` to `http://localhost:3000/api`, or every request will
 > return `404`.
 
 ### 3.2 First admin user

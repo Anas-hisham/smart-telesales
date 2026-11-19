@@ -1,7 +1,6 @@
 # Smart Telesales
 
-**A full-stack CRM for call-center sales teams.** One platform covers the whole sales cycle, from the shared lead pool
-to a recorded sale, with live dashboards for every level of management.
+**A full-stack CRM that puts the whole telesales cycle in one workspace: from the shared lead pool to a recorded sale, with live dashboards for every level of management.**
 
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
@@ -11,43 +10,90 @@ to a recorded sale, with live dashboards for every level of management.
 ![Express](https://img.shields.io/badge/Express-000000?logo=express&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
 
-**[Live Demo](https://smart-telesales-demo.vercel.app/)** &nbsp;|&nbsp; **[Source Code](https://github.com/Anas-hisham/smart-telesales)** &nbsp;|&nbsp; **[API Reference](https://smart-telesalesapis.vercel.app/)**
+### [Live Demo](https://smart-telesales-demo.vercel.app/) &nbsp;·&nbsp; [API Reference](https://smart-telesalesapis.vercel.app/) &nbsp;·&nbsp; [Project Overview](docs/PROJECT_OVERVIEW.md)
+
+| 5 roles | 14 screens | 70+ API endpoints | 17 database tables | 16 back-end modules |
+|:---:|:---:|:---:|:---:|:---:|
 
 ---
 
 ## The problem
 
 Telesales agents lose hours every day jumping between a leads sheet, a dialer, a calendar, e-mail and manager
-spreadsheets. Managers find out about missed targets only at the end of the day, and traditional CRMs show *how many*
-calls were made but not *why* deals were lost.
+spreadsheets. Managers learn about missed targets only at the end of the day, and traditional CRMs show *how many* calls
+were made but not *why* deals were lost.
 
 ## The solution
 
-Smart Telesales replaces that whole stack with one workspace:
+One platform replaces that whole stack.
 
-- **Agents** take leads, follow a daily to-do queue of calls and follow-ups, log every call, book meetings and close
-  sales, all in one screen, so no lead gets forgotten.
-- **Managers** see their people's progress live, with no reports to ask for. Team Leaders see each agent's calls,
-  meetings and sales against the daily target; Operation Managers see every team under them.
-- **Analytics** show where deals are lost: the lead-to-sale funnel, answer and reach rates, best calling hours, and the
-  reasons customers give, by campaign and agent.
-- **Fair and reliable by design:** inactive leads return to the shared pool automatically, two agents can never work the
-  same lead, and each person sees only their own team's data.
-
-## Highlights
-
-| Area | What was built |
-|---|---|
-| **Roles** | 5 roles (Admin, Operation Manager, Team Leader, Agent, Quality), each with its own pages and its own slice of the data |
-| **Front end** | 14 role-based screens, daily Work Queue, calendar, dashboards, analytics; feature-based architecture |
-| **Back end** | REST API with about 70 routes across 16 modules, JWT with rotating refresh tokens, validation on every request |
-| **Safe for many users** | Row locks and transactions, idempotency keys against double clicks, login rate limiting |
-| **Automation** | Background jobs every 30 seconds: 15-day lead rule, finished workflows, meeting reminders |
-| **Database** | PostgreSQL with 17 tables, migrations, and an audit trail for every lead |
+- **Agents** pick up leads, work a daily to-do queue, log every call, book meetings and close sales in one place, so no
+  lead is forgotten.
+- **Managers** see progress live, with no reports to ask for.
+- **Analytics** show where deals are lost and where to focus the team.
+- **The system keeps itself fair:** inactive leads return to the shared pool automatically, and two agents can never
+  work the same lead.
 
 ---
 
-## How it fits together
+## What each role sees
+
+| Role | What they get |
+|---|---|
+| **Admin** | Loads leads into the shared pool (single, paste or import), builds campaigns, creates users, manages teams |
+| **Operation Manager** | A dashboard of every team under them, analytics, and updates and tasks for their people |
+| **Team Leader** | Each agent's calls, emails, meetings and sales against targets; reassigns leads; sends updates |
+| **Agent** | A daily **Work Queue** (Today / Next / Stop), call logging, calendar, tasks and tips |
+| **Quality** | Records sales, follows a group of agents, sends them coaching tips |
+
+Every response is filtered **on the server** by who may see whom (an Agent sees only themselves, a Team Leader their team,
+an Operation Manager all their teams), so the UI cannot be used to read forbidden data.
+
+## How one lead becomes a sale
+
+```mermaid
+flowchart LR
+  A[Admin loads leads<br/>into the pool] --> B[Agent takes a lead]
+  B --> C[Lead gets its campaign steps<br/>call → email → call]
+  C --> D[Work Queue<br/>Today · Next · Stop]
+  D --> E[Calls logged<br/>with an outcome reason]
+  E --> F[Meetings<br/>booked]
+  F --> G[Quality records<br/>the sale]
+  G --> H[Dashboards and<br/>analytics update]
+  D -. "steps done · 15 days idle · removed" .-> P[(Back to the pool)]
+  P --> B
+```
+
+## Analytics that explain the numbers
+
+- Lead-to-sale **funnel**: leads → contacted → reached → meetings → sold
+- **Answer and reach rates**, calls per lead, and **best calling hours**
+- Breakdown by **campaign** and by **agent**, for a day, week, month or custom range
+- The **outcome reasons** agents log (interested, price, timing, wrong contact…)
+- **Data-quality warnings** when numbers are unreliable (for example, calls logged without a reason)
+
+---
+
+## Engineering highlights
+
+| Challenge | How it is solved |
+|---|---|
+| Two agents take the same lead | Transaction with row locks (`SELECT … FOR UPDATE`) |
+| A double click records a call or sale twice | Idempotency keys: the same request returns the first answer |
+| Lead rules must run even when nobody is online | Scheduled jobs every 30 seconds, guarded by a PostgreSQL advisory lock so several instances never run them twice |
+| Secure sessions | 15-minute JWT access tokens, rotating 30-day refresh tokens stored hashed, login rate limiting |
+| Different roles, different data | One scope rule on the server decides which agents each person can see |
+| Maintainable code | Front end split by feature (`types / api / thunks / slice / UI`); back end by module (`routes / service`) |
+| Bad input | zod validation on every request, one error format everywhere |
+| Dates mean the same for everyone | All business dates in Africa/Cairo time, week starts on Saturday |
+
+**Business rules in the code:** a lead with no progress for 15 days returns to the pool; another agent must wait 15 days
+to retake it (the previous agent can retake it at once); meeting reminders go out 15 minutes before; only Admin deletes
+leads. The full list is in the [project overview](docs/PROJECT_OVERVIEW.md#8-business-rules).
+
+---
+
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -61,9 +107,6 @@ flowchart LR
 ```
 
 The server is the **source of truth**. The browser keeps a copy of the data and refreshes it every 30 seconds.
-Permissions are enforced on the server, so the UI cannot be used to read data a role should not see.
-
-## Tech stack
 
 | Layer | Technologies |
 |---|---|
@@ -71,27 +114,45 @@ Permissions are enforced on the server, so the UI cannot be used to read data a 
 | Back end | Node.js, Express, zod, jsonwebtoken, bcryptjs, helmet, cors |
 | Database | PostgreSQL (hosted on Neon) |
 
-## Repository structure
+## Built today and planned
 
-```
-smart-telesales/            (repository: https://github.com/Anas-hisham/smart-telesales)
-├─ README.md                 you are here
-├─ frontend/                 React application (src/ and its README)
-├─ backend/                  Express API (src/, sql/, scripts/ and its README)
-└─ docs/
-   ├─ PROJECT_OVERVIEW.md                 the idea, the flow, and what is built vs planned
-   ├─ frontend-documentation.md           every file and function of the client
-   ├─ backend-documentation.md            every file and function of the server
-   └─ smart-telesales-apis.html           API reference
-```
+| | Status |
+|---|---|
+| Operations: leads, campaigns, calls, meetings, tasks, escalations, sales | **Built** |
+| Analytics: dashboards, funnel, rates, best hours, reasons, data-quality warnings | **Built** |
+| AI layer: call-comment analysis, lead scoring, retrieval-based assistant, speech-to-text | Planned |
+| Sending e-mail from the app | Planned |
 
 ---
 
-## Quick start
+## Repository structure
+
+```
+smart-telesales/
+├─ frontend/    React application
+├─ backend/     Express API: src/, sql/, scripts/
+└─ docs/        project overview, code documentation, API reference
+```
+
+## Documentation
+
+| Read this | If you want to |
+|---|---|
+| [Project overview](docs/PROJECT_OVERVIEW.md) | Understand the idea, the full flow, the business rules, and built versus planned |
+| [Front End README](frontend/README.md) | Learn the client architecture, roles and pages, and how to add a feature |
+| [Back End README](backend/README.md) | Learn the API, authentication, lead lifecycle, background jobs and database |
+| [Front end documentation](docs/frontend-documentation.md) | Look up any front-end file or function |
+| [Back end documentation](docs/backend-documentation.md) | Look up any back-end file or function |
+| [API reference](https://smart-telesalesapis.vercel.app/) | See request and response examples |
+
+---
+
+<details>
+<summary><b>Run it locally</b></summary>
 
 **Requirements:** Node.js 18+ and a PostgreSQL database (local or hosted, for example Neon).
 
-### 1. Back end
+**1. Back end**
 
 ```bash
 cd backend
@@ -105,16 +166,14 @@ DATABASE_URL=postgresql://user:password@host:5432/dbname
 JWT_SECRET=<a long random string>
 ```
 
-Then create the tables and start the server:
-
 ```bash
-npm run migrate
+npm run migrate      # creates the tables
 npm run dev          # or: npm start
 ```
 
-The API is now at `http://localhost:3000/api`, and `http://localhost:3000/health` answers `{"status":"ok"}`.
+The API runs at `http://localhost:3000/api`. `http://localhost:3000/health` answers `{"status":"ok"}`.
 
-### 2. Front end
+**2. Front end**
 
 ```bash
 cd frontend
@@ -131,50 +190,15 @@ VITE_API_URL=http://localhost:3000/api
 npm run dev
 ```
 
-> **Why the `.env`?** The back end serves its routes on `/api`, while the front end defaults to `/api/v1`. Without
-> this line every request returns `404`.
 
-### 3. First admin user
+**3. First admin user**
 
-Sign-in needs an account. The seed script (`backend/scripts/seed.js`) is meant to create the first admin, but it calls
-functions that were renamed and needs a small fix first (details in the
-[Back End README](backend/README.md#13-known-gaps)). Until then, insert the first admin directly in the database.
+Sign-in needs an account. `backend/scripts/seed.js` is meant to create the first admin.
 
-(The commands above assume the usual `npm` scripts in each `package.json`; `npm run migrate` is the one documented in
-`scripts/migrate.js`.)
+</details>
 
 ---
 
-## Roles
-
-| Role | Main job |
-|---|---|
-| **Admin** | Loads leads and campaigns, creates users, manages teams |
-| **Operation Manager** | Runs one line of business; sees all its teams |
-| **Team Leader** | Leads one team; tracks agents against daily targets |
-| **Agent** | Works the daily queue: calls, meetings, follow-ups |
-| **Quality** | Records sales, coaches agents with tips |
-
-## Documentation
-
-| Read this | If you want to |
-|---|---|
-| [Project overview](docs/PROJECT_OVERVIEW.md) | Understand the idea, the lead-to-sale flow, the business rules, and what is built versus planned |
-| [Front End README](frontend/README.md) | Learn the client architecture, roles and pages, and how to add a feature |
-| [Back End README](backend/README.md) | Learn the API, authentication, lead lifecycle, background jobs and database |
-| [Front end documentation](docs/frontend-documentation.md) | Look up any front-end file or function |
-| [Back end documentation](docs/backend-documentation.md) | Look up any back-end file or function |
-| [API reference](https://smart-telesalesapis.vercel.app/) | See request and response examples (also in the repo: [`docs/smart-telesales-apis.html`](docs/smart-telesales-apis.html)) |
-
-## Status
-
-**Built:** the operations layer (leads, campaigns, calls, meetings, tasks, escalations, sales) and the analytics layer
-(dashboards, funnel, rates, best hours, call reasons, data-quality warnings).
-
-**Planned:** an AI layer (analysis of call comments, lead scoring, a retrieval-based assistant, speech-to-text) and
-sending e-mail from the app. See the [project overview](docs/PROJECT_OVERVIEW.md#10-built-today-vs-planned) for the
-full list and the known gaps between the code and the older documents.
-
 ## Author
 
-**Anas Hisham** · [LinkedIn](https://www.linkedin.com/in/anashisham/) · [anashisham.dev@gmail.com](mailto:anashisham.dev@gmail.com)
+**Anas Hisham** · [LinkedIn](https://www.linkedin.com/in/anashisham/) · [anashisham.dev@gmail.com](mailto:anashisham.dev@gmail.com) · [Source code](https://github.com/Anas-hisham/smart-telesales)
