@@ -1,8 +1,8 @@
 # Smart Telesales — Back End API
 
 The REST API behind **Smart Telesales**, a CRM for telesales teams. It owns all the data and all the business rules:
-who can see what, how leads move between the shared pool and agents, when a lead expires, and how sales are counted.
-The [front end](../frontend/README.md) is only a client of this API.
+who can see what, how leads move between the shared pool and agents, when a lead expires, how sales are counted, and
+how the AI call assistant is prompted and validated. The [front end](../frontend/README.md) is only a client of this API.
 
 > See the [project overview](../README.md) for the big picture.
 
@@ -10,7 +10,8 @@ The [front end](../frontend/README.md) is only a client of this API.
 |---|---|
 | **Runtime** | Node.js + Express |
 | **Database** | PostgreSQL (tested with Neon) |
-| **Size** | 16 modules, about 70 routes, 17 tables |
+| **AI** | Google Gemini (call assistant) |
+| **Size** | 16 modules, about 70 routes, 17 tables (before the AI call assistant) |
 | **API reference** | [https://smart-telesalesapis.vercel.app/](https://smart-telesalesapis.vercel.app/) |
 | **Source code** | [https://github.com/Anas-hisham/smart-telesales](https://github.com/Anas-hisham/smart-telesales) |
 
@@ -26,10 +27,11 @@ The [front end](../frontend/README.md) is only a client of this API.
 6. [The lead lifecycle](#6-the-lead-lifecycle)
 7. [Safe multi-user actions](#7-safe-multi-user-actions)
 8. [Background jobs](#8-background-jobs)
-9. [API overview](#9-api-overview)
-10. [Database](#10-database)
-11. [Error format](#11-error-format)
-12. [Project structure](#12-project-structure)
+9. [AI call assistant](#9-ai-call-assistant)
+10. [API overview](#10-api-overview)
+11. [Database](#11-database)
+12. [Error format](#12-error-format)
+13. [Project structure](#13-project-structure)
 
 ---
 
@@ -43,6 +45,10 @@ The [front end](../frontend/README.md) is only a client of this API.
   best calling hours, and call reasons, by campaign and agent.
 - **Sales tracking** with monthly targets per agent, team and Operation Manager.
 - **Internal communication**: team updates, tasks, tips from Quality, escalations, and notifications with menu badges.
+- **AI call assistant (Google Gemini)**: before each call, a personalised call script, predicted customer objections
+  with ready-to-say answers, a customer brief and next steps, generated from the lead's call history and a company
+  knowledge base that Admins and Operation Managers manage. Grounded, validated, cached and rate limited
+  (see [section 9](#9-ai-call-assistant)).
 - **Safe under concurrency**: row locks, transactions, idempotency keys and a login rate limiter.
 - **Scheduled jobs** that enforce the 15-day lead rule and send meeting reminders.
 
@@ -54,17 +60,19 @@ The [front end](../frontend/README.md) is only a client of this API.
 |---|---|
 | **Node.js + Express** | HTTP server and routing |
 | **PostgreSQL** (`pg`) | Data, transactions, row locks, advisory locks |
-| **zod** | Validation of every request body and query |
+| **zod** | Validation of every request body and query, and of the AI model's JSON output |
 | **jsonwebtoken** | Access tokens (JWT) |
 | **bcryptjs** | Password hashing |
 | **helmet, cors** | Security headers and CORS |
 | **dotenv** | Environment configuration |
+| **Google Gemini API** | Generates the AI call assistant content (script, objections, brief, next steps) |
 
 ---
 
 ## 3. Getting started
 
-**Requirements:** Node.js 18+ and a PostgreSQL database (local, or a hosted one such as Neon).
+**Requirements:** Node.js 18+, a PostgreSQL database (local, or a hosted one such as Neon), and a Google Gemini API key
+if you want to use the AI call assistant.
 
 ### 3.1 Run
 
@@ -89,7 +97,16 @@ All API routes live under **`/api`**, for example `POST http://localhost:3000/ap
 > The front end defaults to `/api`. Set its `VITE_API_URL` to `http://localhost:3000/api`, or every request will
 > return `404`.
 
-### 3.2 First admin user
+### 3.2 AI call assistant configuration
+
+Add your Gemini API key to the back end `.env` (see `src/config/env.js` for the exact variable names, model names and
+limits). Without a key, the rest of the API works normally and only the AI call assistant is unavailable.
+
+```env
+GEMINI_API_KEY=<your Google Gemini API key>
+```
+
+### 3.3 First admin user
 
 `scripts/seed.js` creates the first admin (and, with `--demo`, a small demo company). See
 [Known gaps](#13-known-gaps): the script needs a small fix before it runs. Until then you can insert the first admin
@@ -149,8 +166,8 @@ The `visibleAgentIds` rule decides which agents' data a person can read:
 | Operation Manager | The agents of all the teams they manage |
 | Quality | The agents they follow |
 
-Dashboards, analytics, sales, leads and meetings are all filtered by this rule on the server, so the front end
-cannot ask for data a role should not have.
+Dashboards, analytics, sales, leads, meetings and **AI call assistant requests** are all filtered by this rule on the
+server, so the front end cannot ask for data a role should not have.
 
 ---
 
@@ -164,11 +181,13 @@ flowchart TD
   Q -->|no progress for 15 days| P
   Q -->|agent removes it| P
   Q -->|Team Leader transfers it| Q2[Another agent's queue]
+  Q -.->|before a call| AI[AI call assistant]
 ```
 
 1. **Admin** loads leads into the pool (one by one, or by pasting/importing a list) and assigns a campaign.
 2. An **agent** takes a lead by its exact ID. The lead's touch-point steps are copied from the campaign with due dates.
-3. The agent works the steps: log calls, complete, skip or restore a step, stop or resume the lead.
+3. The agent works the steps: log calls, complete, skip or restore a step, stop or resume the lead. Before a call, the
+   agent can open the **AI call assistant** for the lead.
 4. The lead **returns to the pool** when its steps are finished, after **15 days without activity**, or when the agent
    removes it. An upcoming arranged meeting keeps a lead alive until the meeting is over.
 5. **Cooldown:** after a lead leaves a queue, only the previous agent can take it again at once. Any other agent must
@@ -189,6 +208,7 @@ Many people work on the same data at the same time. These mechanisms keep it con
 | A failed request blocks its key | Failed requests release their key; keys stuck in progress for 60 seconds are cleared |
 | A multi-step write fails half way | All multi-step writes use one transaction, so they commit together or roll back together |
 | Password guessing | Login limiter: 5 attempts per minute per IP and username |
+| One user floods the AI model | Per-user rate limit on AI call assistant requests, plus a per-lead cache |
 | Several server instances run the jobs twice | Jobs are guarded by a PostgreSQL **advisory lock** (see below) |
 
 Note: the login limiter keeps its counters in memory, so it is accurate for a single server instance.
@@ -211,7 +231,60 @@ The jobs read leads with `FOR UPDATE SKIP LOCKED`, so they never fight with an a
 
 ---
 
-## 9. API overview
+## 9. AI call assistant
+
+Before a call, the agent opens a popup for the lead. The server generates, with Google Gemini:
+
+- a **personalised call script**;
+- **predicted customer objections**, each with a ready-to-say answer;
+- a **customer brief**;
+- **next steps**.
+
+### How a request is handled
+
+```mermaid
+flowchart LR
+  REQ[Agent request<br/>for a lead] --> PERM[Lead permission check<br/>visibleAgentIds]
+  PERM --> RL[Per-user rate limit]
+  RL --> CACHE{Cached<br/>for this lead?}
+  CACHE -- yes --> OUT[JSON response]
+  CACHE -- no --> BUILD[Build grounded prompt<br/>call history + knowledge base<br/>no phone or e-mail]
+  BUILD --> LLM[Gemini<br/>streaming · retries · fallback model]
+  LLM --> VAL[Validate with zod<br/>repair if needed]
+  VAL --> SAVE[Cache per lead]
+  SAVE --> OUT
+```
+
+1. **Permissions.** The same server-side lead permission rule as every other endpoint applies: an agent can only get
+   the assistant for a lead they are allowed to see.
+2. **Rate limit and cache.** Requests are limited per user, and results are cached per lead, so repeated opens do not
+   cost model calls.
+3. **Grounded prompt.** The prompt is built from only two sources: the lead's **call history** and the **company
+   knowledge base**. The model is told to use that data only, so it does not invent prices or features.
+4. **Privacy.** Contact details (**phone, email**) are never sent to the model.
+5. **Model call.** Responses can be **streamed**. Failed calls are **retried**, and a **fallback model** is used if the
+   main one keeps failing.
+6. **Structured output.** The model must return JSON. The server **validates** it against a schema and **repairs** it
+   when it is slightly malformed, so the UI only receives the expected shape.
+7. **Cache.** The valid result is stored per lead and returned on later requests.
+
+### Knowledge base
+
+The knowledge base is the company information the assistant is allowed to rely on (for example products, prices,
+features and approved answers). **Admin** and **Operation Manager** create and edit it in the app. Agents do not edit
+it; they only see its effect in the generated content.
+
+### Operational notes
+
+- The Gemini API key is read from the environment. If it is missing or the model is down, only the AI call assistant
+  fails; the rest of the API is unaffected.
+- AI errors use the standard [error format](#12-error-format) (for example `403 FORBIDDEN` for a lead the person may
+  not see, and `429` when the per-user limit is reached).
+- The assistant output is advice for the agent. It is not written to the lead's call history.
+
+---
+
+## 10. API overview
 
 Base path: `/api`. The full request and response examples are in the [API reference](../docs/smart-telesales-apis.html).
 
@@ -226,6 +299,8 @@ Base path: `/api`. The full request and response examples are in the [API refere
 | **Leads** | `GET /leads`, `GET /leads/:id`, `GET /me/work-queue` | Scoped by role |
 | **Lead actions** | `POST /leads/:id/touch-points/:order/{complete\|skip\|restore}`, `POST /leads/:id/calls`, `PATCH /leads/:id/calls/:logId`, `POST /leads/:id/{stop\|resume\|remove}` | Agent |
 | | `POST /leads/:id/transfer` | Team Leader, OM |
+| **AI call assistant** | Generate the call assistant content for a lead (script, objections, brief, next steps; streaming supported) | Agent, scoped by lead permissions; per-user rate limit |
+| **AI knowledge base** | List, create, edit and delete knowledge-base entries | Admin, Operation Manager |
 | **Meetings** | `GET /meetings/options`, `GET/POST /meetings`, `PATCH /meetings/:id`, `POST /meetings/:id/reschedule` | Agent, TL, OM, Quality |
 | **Tasks** | `GET/POST /tasks`, `GET /tasks/assignees`, `POST /tasks/seen`, `POST /tasks/:id/toggle` | Create: leaders |
 | **Updates** | `GET/POST /updates`, `POST /updates/seen`, `POST /updates/:id/acknowledge` | Post: OM, TL |
@@ -238,9 +313,9 @@ Base path: `/api`. The full request and response examples are in the [API refere
 
 ---
 
-## 10. Database
+## 11. Database
 
-PostgreSQL, created by `sql/001_schema.sql` (17 tables):
+PostgreSQL, created by `sql/001_schema.sql` (17 tables, plus the tables added for the AI call assistant):
 
 | Group | Tables |
 |---|---|
@@ -248,6 +323,7 @@ PostgreSQL, created by `sql/001_schema.sql` (17 tables):
 | Sales work | `workflows` (campaigns), `leads`, `lead_assignments`, `call_logs`, `lead_history`, `meetings`, `sales` |
 | Communication | `team_updates`, `tasks`, `tips`, `escalations`, `escalation_steps`, `notifications` |
 | Infrastructure | `idempotency_keys` |
+| AI call assistant | The company knowledge base entries and the per-lead cache of generated results |
 
 Design notes:
 
@@ -262,7 +338,7 @@ in `schema_migrations`.
 
 ---
 
-## 11. Error format
+## 12. Error format
 
 Every error leaves the API in the same shape:
 
@@ -280,11 +356,11 @@ Every error leaves the API in the same shape:
 | 404 | `NOT_FOUND` | Item not found |
 | 409 | various, `REQUEST_IN_PROGRESS` | Business conflict, or the same request is still running |
 | 422 | `VALIDATION_FAILED` | Invalid input (`details` lists each field) |
-| 429 | `TOO_MANY_ATTEMPTS` | Login limit reached |
+| 429 | `TOO_MANY_ATTEMPTS` | Login limit reached (the AI call assistant has its own per-user limit) |
 
 ---
 
-## 12. Project structure
+## 13. Project structure
 
 ```
 backend/
@@ -303,6 +379,7 @@ backend/
    └─ modules/                  one folder per area, each with routes.js and service.js
       auth · users · teams · campaigns · adminLeads · leadPool · leads · meetings · updates
       tasks · tips · sales · escalations · notifications · dashboard · analytics
+      · AI call assistant and knowledge base (Gemini client, prompt builder, JSON validation and repair, cache)
 ```
 
 ---

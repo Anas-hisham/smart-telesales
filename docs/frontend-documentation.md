@@ -2,7 +2,8 @@
 
 The web application of **Smart Telesales**, a CRM for telesales teams. It gives every person in a call-center
 (Admin, Operation Manager, Team Leader, Agent, Quality) one workspace for the whole sales cycle: from the shared
-lead pool, through daily calls and meetings, to recorded sales and analytics.
+lead pool, through daily calls and meetings, to recorded sales and analytics. Agents also get an **AI call assistant**
+that prepares them before each call.
 
 > **Part of a full-stack project.** This repo folder is the client. It talks to the
 > [Back End API](../backend/README.md) over REST. See the [project overview](../README.md) for the big picture.
@@ -35,16 +36,17 @@ The app shows each role only what it needs.
 
 | Role | What they do here |
 |---|---|
-| **Admin** | Loads leads into the shared **Lead Pool** (single add, paste, or import), builds **Campaigns**, creates users, moves agents between teams, assigns managers and Quality. |
-| **Operation Manager** | Runs one line of business (LOB). Sees every team under them in the dashboard and analytics, sends updates and tasks. |
+| **Admin** | Loads leads into the shared **Lead Pool** (single add, paste, or import), builds **Campaigns**, creates users, moves agents between teams, assigns managers and Quality, manages the AI **knowledge base**. |
+| **Operation Manager** | Runs one line of business (LOB). Sees every team under them in the dashboard and analytics, sends updates and tasks, manages the AI **knowledge base**. |
 | **Team Leader** | Leads one team. Tracks each agent's calls, emails, meetings and sales against the daily target, and reassigns expired leads. |
-| **Agent** | Takes leads from the pool, works a daily **Work Queue**, logs calls, arranges meetings, and records progress. |
+| **Agent** | Takes leads from the pool, works a daily **Work Queue**, opens the **AI call assistant** before a call, logs calls, arranges meetings, and records progress. |
 | **Quality** | Follows agents of one LOB, records sales, and sends tips to agents. |
 
 Main screens (14 pages):
 
 - **Work Queue** – the agent's daily screen. Leads are grouped by campaign, then **Today / Next / Stop**, then by
-  touch-point step (call or email). Includes call logging, skip/restore and a lead detail drawer.
+  touch-point step (call or email). Includes call logging, skip/restore, a lead detail drawer and the **AI call
+  assistant** popup.
 - **Dashboard** – role-specific progress against targets (team and agent level).
 - **Analytics** – lead-to-sale funnel, answer and reach rates, best calling hours, and the reasons customers give,
   by campaign and agent, plus a data-quality warning when numbers are unreliable.
@@ -54,6 +56,8 @@ Main screens (14 pages):
 - **Sales** – monthly targets per agent, team and OM, top agents, and sale details.
 - **Team Updates, Tasks, Tips, Escalations** – internal communication between roles.
 - **Teams, Create User** – organisation structure and account management.
+- **AI knowledge base** – where Admins and Operation Managers write and maintain the company information (products,
+  prices, features, answers) that the AI call assistant is allowed to use.
 
 ---
 
@@ -70,6 +74,8 @@ Main screens (14 pages):
 
 There is no routing library: the current page is a `useState<PageId>` in `App.tsx`, and access is decided by the
 role table in `app/navigation.ts`.
+
+The AI model (Google Gemini) is never called from the browser. The client only talks to the back end.
 
 ---
 
@@ -100,6 +106,9 @@ npm run dev
 > If this is wrong, every request returns `404`.
 
 Back-end CORS must allow the origin of the front end (`CORS_ORIGINS` in the back end's environment).
+
+The AI call assistant needs no front-end setting. Its API key lives on the back end (see the
+[Back End README](../backend/README.md)).
 
 ---
 
@@ -172,6 +181,30 @@ meeting reminders run on the server.
 - Requests that must never be saved twice (log a call, record a sale) send an `Idempotency-Key` header.
 - Many hooks use a stale-response guard, so a slow answer never overwrites a newer one.
 
+### 4.7 AI call assistant
+
+Before each call, the agent opens a popup from the lead (Work Queue or lead drawer). The popup shows:
+
+- a **personalised call script**;
+- **predicted customer objections**, each with a ready-to-say answer;
+- a **customer brief**;
+- **next steps**.
+
+How the client handles it:
+
+- The popup asks the back end for the lead's assistant content. The server builds the prompt from the lead's call
+  history and the company knowledge base, calls Google Gemini, and returns **validated** structured JSON. The client
+  therefore renders a fixed shape and never parses raw model text.
+- Results are **cached per lead on the server**, so reopening the popup for the same lead is fast and does not spend
+  model calls.
+- Generation can be **streamed**, so the popup can show content as it arrives, with a loading state before that.
+- Failures (rate limit, model outage, permission) arrive as a normal `ApiError` and appear in the `ApiErrorBanner`.
+  The popup uses the same stale-response guard as other hooks, so closing it or switching lead never shows an old
+  answer.
+- **No phone number or e-mail is sent to the model.** The server removes them, and server-side lead permissions apply
+  to every AI request, so an agent can only open the assistant for a lead they may see.
+- The **knowledge base** screen is available to Admin and Operation Manager. Agents read the results, not the source.
+
 ---
 
 ## 5. Roles and pages
@@ -192,6 +225,9 @@ meeting reminders run on the server.
 | `tasks` | Tasks | OM, TL, Agent, Quality |
 | `escalations` | Escalations | All five roles |
 | `tips` | Tips | Agent, Quality |
+
+The **AI call assistant** is a popup opened from the agent's lead screens, not a menu page. The **AI knowledge base**
+screen is for Admin and Operation Manager only.
 
 Landing page after sign-in: Quality → Sales, Admin → Lead Pool, everyone else → Dashboard. If the open page is not
 allowed for the role, the app shows the home page instead.
@@ -217,6 +253,7 @@ allowed for the role, the app shows the home page instead.
 | Lead IDs: letters and digits only; max 1000 rows per import or paste | `leadCode.schema` |
 | Completing a meeting requires a written outcome; only its creator can change its status | `MeetingDetailModal` |
 | Agents never delete leads (they remove them back to the pool); only Admin deletes | thunks, `LeadPoolPage` |
+| The AI call assistant is for agents; the AI knowledge base is edited only by Admin and Operation Manager | `navigation`, AI assistant feature |
 
 ---
 
@@ -237,7 +274,7 @@ src/
 └─ features/
    auth · users · teams · campaigns · leads · take-leads · lead-pool · my-leads · work-queue
    meetings · tasks · tips · team-updates · escalations · notifications · sales · dashboard
-   analytics · workspace
+   analytics · workspace · AI call assistant and knowledge base
 ```
 
 About 190 source files (TypeScript and TSX). A file-by-file reference for every function is in the
@@ -268,6 +305,8 @@ Reuse `useConfirm`, `Pagination`, `DoneSection`, `Collapsible` and the pickers f
   result, and their pages reload the data themselves.
 - **Email touch points** are completed by copying the text or opening the mail app (`mailto:`), then marking the step
   as done. The app does not send email itself.
+- **The AI call assistant is grounded, not free-form.** It only knows the lead's call history and the knowledge base.
+  If the knowledge base is empty or thin, the script will be generic, so keep it up to date.
 - **Candidates for cleanup:** a duplicate `tasks.api.ts` inside `features/tasks/components/`, and the
   `LeadImportModalShell` that lives in `lead-pool` but is used by several features (it could move to `shared/`).
 - **Tokens** are stored in `localStorage`. This is simple and fine for a demo; a production deployment may prefer

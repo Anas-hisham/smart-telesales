@@ -1,7 +1,7 @@
 # Smart Telesales — Project Overview
 
 **A CRM for call-center sales teams: one platform for the whole sales cycle, from the shared lead pool to a recorded
-sale, with live dashboards for every level of management.**
+sale, with live dashboards for every level of management and an AI assistant that prepares the agent before each call.**
 
 This document explains the *idea* behind the project, how the system works end to end, and what is built today versus
 what is planned. For code-level details, see the [Front End README](../frontend/README.md) and the
@@ -44,7 +44,8 @@ Telesales organisations (call centers selling by phone) struggle with five thing
 
 Smart Telesales puts the **whole sales cycle in one place**: creating leads, putting them in an agent's daily work
 list, following the planned contact steps of a campaign, logging calls, booking meetings, assigning tasks, handling
-escalations, recording sales, quality review, and analytics.
+escalations, recording sales, quality review, and analytics. Before each call, an **AI call assistant** turns the
+lead's history and the company's own knowledge into a ready-to-use call script.
 
 Each person sees only what their role needs, and each manager sees their people's progress **without asking for a
 report**.
@@ -55,7 +56,7 @@ The original idea has three layers:
 |---|---|---|
 | **1. Operations** | Leads, campaigns, calls, meetings, tasks, escalations, sales | **Built** |
 | **2. Analytics** | Dashboards, funnel, answer and reach rates, best calling hours | **Built** |
-| **3. AI engine** | Comment analysis (NLP), lead scoring, RAG + LLM assistant, speech-to-text | **Planned** |
+| **3. AI engine** | AI call assistant (LLM), comment analysis (NLP), lead scoring, speech-to-text | **Partly built:** the AI call assistant is built; the rest is planned |
 
 ---
 
@@ -65,14 +66,15 @@ Five roles, each with its own screens and its own slice of the data.
 
 | Role | Main job | Typical day in the app |
 |---|---|---|
-| **Admin** | Sets up the company | Loads leads into the pool, builds campaigns, creates users, moves agents between teams, assigns managers and Quality |
-| **Operation Manager (OM)** | Runs one line of business (LOB: `REG` or `DJ`) | Opens the dashboard to see every team under them, checks analytics, sends updates and tasks |
+| **Admin** | Sets up the company | Loads leads into the pool, builds campaigns, creates users, moves agents between teams, assigns managers and Quality, manages the AI knowledge base |
+| **Operation Manager (OM)** | Runs one line of business (LOB: `REG` or `DJ`) | Opens the dashboard to see every team under them, checks analytics, sends updates and tasks, manages the AI knowledge base |
 | **Team Leader (TL)** | Leads one team of agents | Watches each agent's calls, emails, meetings and sales against the daily target; reassigns leads; sends updates |
-| **Agent** | Calls the leads | Takes leads from the pool, works the daily **Work Queue**, logs calls, arranges meetings |
+| **Agent** | Calls the leads | Takes leads from the pool, works the daily **Work Queue**, opens the **AI call assistant** before a call, logs calls, arranges meetings |
 | **Quality** | Reviews and coaches | Records sales, follows a group of agents, sends them tips |
 
 **Visibility rule (enforced by the server):** Admin sees everyone; an Agent sees only themselves; a Team Leader sees
-their team; an Operation Manager sees all the teams they manage; Quality sees the agents they follow.
+their team; an Operation Manager sees all the teams they manage; Quality sees the agents they follow. The same rule
+applies to every AI request.
 
 ---
 
@@ -83,7 +85,8 @@ flowchart TD
   A[Admin loads leads<br/>into the shared pool] --> B[Agent takes a lead<br/>by its exact ID]
   B --> C[The lead gets the steps<br/>of its campaign<br/>call → email → call …]
   C --> D[Agent works the Work Queue<br/>Today / Next / Stop]
-  D --> E[Agent logs calls<br/>NVM · LVM · Discovery<br/>with a reason]
+  D --> AI[AI call assistant<br/>script · objections · brief · next steps]
+  AI --> E[Agent logs calls<br/>NVM · LVM · Discovery<br/>with a reason]
   E --> F[Meeting arranged<br/>in the Calendar]
   F --> G[Quality records the sale]
   G --> H[Numbers flow into<br/>Dashboard and Analytics]
@@ -99,12 +102,15 @@ Step by step:
 3. **Plan.** The lead receives the campaign's ordered **touch points** (a call or an email, each with a day offset).
 4. **Work.** The agent's **Work Queue** groups leads by campaign, then *Today* (due or overdue), *Next* (later) and
    *Stop*, then by step. The agent completes, skips or restores steps.
-5. **Log.** Every call is logged as **NVM** (no answer), **LVM** (answered but not the right person, or voicemail) or
+5. **Prepare.** Before a call, the agent opens the **AI call assistant** for the lead: a personalised call script,
+   the objections the customer is likely to raise with ready-to-say answers, a short customer brief and suggested next
+   steps. It is built from the lead's call history and the company knowledge base.
+6. **Log.** Every call is logged as **NVM** (no answer), **LVM** (answered but not the right person, or voicemail) or
    **Discovery** (reached the right person), with an optional outcome reason such as *interested*, *price*, *timing*
    or *wrong contact*.
-6. **Meet.** Meetings are booked in the Calendar. A meeting needs a written outcome when completed.
-7. **Sell.** Quality records the sale. It counts toward the agent, team and OM monthly targets.
-8. **Recycle.** When all steps are done, after **15 days without progress**, or when the agent removes it, the lead
+7. **Meet.** Meetings are booked in the Calendar. A meeting needs a written outcome when completed.
+8. **Sell.** Quality records the sale. It counts toward the agent, team and OM monthly targets.
+9. **Recycle.** When all steps are done, after **15 days without progress**, or when the agent removes it, the lead
    returns to the pool. The previous agent may retake it at once; any other agent must wait 15 days.
 
 ---
@@ -119,6 +125,22 @@ Step by step:
 - **Calendar** with meeting reminders 15 minutes before.
 - **Tasks, Team Updates, Tips, Escalations** to communicate between roles, with acknowledgements and menu badges.
 - **Notifications** for returned leads, meetings and assignments.
+
+### AI call assistant
+
+Before each call, the agent opens a popup for the lead with:
+
+- a **personalised call script**;
+- **predicted customer objections**, each with a ready-to-say answer;
+- a **customer brief** and **suggested next steps**.
+
+It is generated by Google Gemini from two sources only: the lead's **call history** and a **company knowledge base**
+that Admins and Operation Managers manage in the app. The prompt is grounded in that data, so the assistant does not
+invent prices or features. The model returns structured JSON, which the server validates and repairs before it reaches
+the screen, and the result is cached per lead.
+
+Reliability, cost and privacy controls: streaming, retries with a fallback model, per-user rate limiting, and **contact
+details (phone, email) are never sent to the model**. Server-side lead permissions apply to every AI request.
 
 ### Analytics and dashboards
 
@@ -144,10 +166,15 @@ flowchart LR
   subgraph Server
     API[Express REST API<br/>JWT · zod validation]
     JOBS[Background jobs<br/>every 30 s]
+    AIS[AI call assistant<br/>prompt · validate · cache]
   end
   DB[(PostgreSQL)]
+  LLM[Google Gemini API]
   UI -- "REST /api<br/>Bearer token" --> API
   API --> DB
+  API --> AIS
+  AIS --> DB
+  AIS -- "no contact details" --> LLM
   JOBS --> DB
   UI -. "polls every 30 s" .-> API
 ```
@@ -158,6 +185,7 @@ flowchart LR
 | **Back end** | Node.js, Express, zod, JWT, bcrypt | Business rules, permissions, validation |
 | **Database** | PostgreSQL (hosted on Neon) | Source of truth: 17 tables |
 | **Jobs** | Timer inside the server, guarded by a PostgreSQL advisory lock | 15-day rule, workflow completion, reminders, clean-up |
+| **AI** | Google Gemini | Generates the call script, objections, brief and next steps, from lead history and the knowledge base |
 
 ---
 
@@ -174,6 +202,10 @@ flowchart LR
 | **Rules run as scheduled jobs on the server** | Lead expiry and reminders happen even when nobody has the app open |
 | **All dates in Africa/Cairo time, week starts on Saturday** | Daily targets and "today" mean the same thing for everyone |
 | **Polling every 30 seconds** instead of WebSockets | Simple and reliable; the data changes slowly enough that live push is not needed |
+| **The AI is grounded in company data only** (the lead's call history and the knowledge base) | The assistant never invents prices or features that agents would then promise to customers |
+| **AI output is validated and repaired on the server** before the UI sees it | A malformed model answer cannot break the screen |
+| **Contact details never leave the system** (no phone or email is sent to the model) | Customer privacy; the script does not need them |
+| **AI results are cached per lead, with retries, a fallback model and per-user rate limits** | Lower cost, faster popup, and a model outage or a spamming user does not stop the agent |
 
 ---
 
@@ -196,6 +228,10 @@ flowchart LR
 | Who deletes leads | **Admin only** |
 | Who records and deletes sales | **Quality** |
 | Who creates meetings | Agent, TL, OM, Quality (only the creator changes its status) |
+| Who manages the AI knowledge base | **Admin** and **Operation Manager** |
+| Who uses the AI call assistant | Agents, on leads they are allowed to see; server lead permissions apply to every AI request |
+| What the AI may use | The lead's call history and the knowledge base only; **never** phone numbers or e-mail addresses |
+| AI usage limit | Per-user rate limit |
 
 ---
 
@@ -208,6 +244,8 @@ flowchart LR
 - **Database:** 17 tables in five groups: people and sessions, sales work (campaigns, leads, assignments, call logs,
   history, meetings, sales), communication (updates, tasks, tips, escalations, notifications), and infrastructure
   (idempotency keys). Every important lead event is written to a history table, giving each lead an audit trail.
+- **AI data:** the AI call assistant reads the lead's call history and the company knowledge base. Phone numbers and
+  e-mail addresses are removed before anything is sent to the model. Generated results are cached per lead.
 
 ---
 
@@ -221,14 +259,17 @@ flowchart LR
 | Dashboards and analytics (funnel, rates, best hours, reasons, data quality) | **Built** |
 | Scheduled jobs (15-day rule, reminders) | **Built** |
 | Structured call reasons chosen by the agent | **Built** (the agent picks the reason; no automatic text analysis yet) |
+| **AI call assistant (Google Gemini):** personalised call script, predicted objections with answers, customer brief and next steps, grounded in call history and a company knowledge base managed by Admin and OM | **Built** |
+| **AI safeguards:** validated and repaired JSON output, per-lead cache, streaming, retries with a fallback model, per-user rate limiting, contact details never sent to the model | **Built** |
 | **NLP** on call comments: classify rejection reasons and objections | Planned |
 | **Lead scoring:** probability to answer and to buy, priority order | Planned |
-| **RAG + LLM assistant:** next-step and call-script suggestions with reasons | Planned |
 | **Speech-to-text** for call recordings and voice notes | Planned |
 | E-mail sending from the app (today the agent copies the text or opens the mail app) | Planned |
 
 **Technology choices that changed from the first proposal:** the front end uses plain React with Vite (the proposal
-mentioned Next.js), and the charts are drawn with Tailwind rather than Recharts.
+mentioned Next.js), and the charts are drawn with Tailwind rather than Recharts. The proposed "RAG + LLM assistant" is
+delivered as the AI call assistant: the model is grounded in the lead's call history and the knowledge base through the
+prompt.
 
 ---
 
@@ -236,7 +277,8 @@ mentioned Next.js), and the charts are drawn with Tailwind rather than Recharts.
 
 The plan is to compare performance before and after adoption, instead of assuming improvement:
 
-1. **Answer and conversion rates** before and after, once lead scoring directs agents to the best leads.
+1. **Answer and conversion rates** before and after, once lead scoring directs agents to the best leads and the AI call
+   assistant prepares each call.
 2. **Text-analysis accuracy,** measured with precision and recall against a hand-labelled sample.
 3. **Return on investment,** by shifting effort and spend toward the campaigns and leads that actually sell.
 4. **Time saved and data accuracy,** from fewer tools and fewer lost follow-ups.
@@ -265,8 +307,8 @@ Notes for anyone reading the code next to the older documents:
 | Document | What it covers |
 |---|---|
 | [Project README](../README.md) | Quick start and links |
-| [Front End README](../frontend/README.md) | Architecture, roles and pages, how to add a feature |
-| [Back End README](../backend/README.md) | API, authentication, lead lifecycle, jobs, database |
+| [Front End README](../frontend/README.md) | Architecture, roles and pages, the AI call assistant popup, how to add a feature |
+| [Back End README](../backend/README.md) | API, authentication, lead lifecycle, AI call assistant, jobs, database |
 | [Front end documentation](./frontend-documentation.md) | Every file and function of the client |
 | [Back end documentation](./backend-documentation.md) | Every file and function of the server |
 | [API reference](./smart-telesales-apis.html) | Request and response examples |
