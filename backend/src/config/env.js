@@ -15,6 +15,9 @@ module.exports = {
   refreshTtlDays: 30,
   corsOrigins: (process.env.CORS_ORIGINS || '*').split(',').map((origin) => origin.trim()).filter(Boolean),
   runJobs: process.env.RUN_JOBS !== 'false',
+  geminiApiKey: process.env.GEMINI_API_KEY || '', // optional: AI features answer 503 until it is set
+  geminiFallbackModel: process.env.GEMINI_FALLBACK_MODEL || '', // optional second model when the first is overloaded
+  geminiModel: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
 
   // business rules
   tz: 'Africa/Cairo',

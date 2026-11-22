@@ -1,5 +1,6 @@
 import { Ban, Building2, Download, Hash, History, Mail, Phone, Play, Users, X, XCircle } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { AiAssistantButton } from '@/features/ai/components/AiAssistantButton';
 import { campaignLabel } from '@/features/campaigns/utils/campaignLabel';
 import { useLeadDetail } from '@/features/leads/hooks/useLeadDetail';
 import { removeLeadFromAgentQueue, resumeLeadWorkflow, stopLeadWorkflow, takeLeadsFromPool } from '@/features/leads/thunks/leads.thunks';
@@ -168,6 +169,8 @@ export function MyLeadsPage() {
                 <X className="w-4 h-4 text-slate-600" />
               </button>
             </div>
+
+            <div className="px-4 sm:px-6 pt-4"><AiAssistantButton lead={selectedLead} /></div>
 
             <div className="px-4 sm:px-6 py-4 border-b border-slate-200">
               <div className="grid grid-cols-2 gap-4">

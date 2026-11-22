@@ -1,6 +1,7 @@
 import { Ban, Calendar, CheckCircle2, Mail, MoreVertical, PauseCircle, Phone, Play, SkipForward, Undo2, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import type { TouchPoint } from '@/features/campaigns/types/campaigns.types';
+import { AiAssistantButton } from '@/features/ai/components/AiAssistantButton';
 import { useLeadDetail } from '@/features/leads/hooks/useLeadDetail';
 import type { Lead } from '@/features/leads/types/leads.types';
 import { queueCategory } from '@/features/leads/utils/callClassification';
@@ -80,6 +81,9 @@ export function LeadDetailDrawer({
             <button onClick={onResume} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700 shrink-0">Resume</button>
           </div>
         )}
+
+        {/* AI assistant: script, objections and brief before the call */}
+        <div className="px-4 sm:px-6 pt-4"><AiAssistantButton lead={lead} /></div>
 
         {/* Contact info */}
         <div className="px-4 sm:px-6 py-4 border-b border-slate-200">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/app/layout/AppShell';
 import { canOpenPage, homePageFor, type PageId } from '@/app/navigation';
+import { KnowledgePage } from '@/features/ai/pages/KnowledgePage';
 import { AnalyticsPage } from '@/features/analytics/pages/AnalyticsPage';
 import { LoginPage } from '@/features/auth/pages/LoginPage';
 import { bootSession, logout } from '@/features/auth/thunks/auth.thunks';
@@ -61,6 +62,7 @@ export function App() {
       {currentPage === 'teams' && <TeamsPage />}
       {currentPage === 'escalations' && <EscalationsPage />}
       {currentPage === 'tips' && <TipsPage />}
+      {currentPage === 'knowledge' && <KnowledgePage />}
     </AppShell>
   );
 }

@@ -21,5 +21,6 @@ router.use(require('./escalations/escalations.routes'));
 router.use(require('./notifications/notifications.routes'));
 router.use(require('./dashboard/dashboard.routes'));
 router.use(require('./analytics/analytics.routes'));
+router.use(require('./ai/ai.routes'));
 
 module.exports = router;
